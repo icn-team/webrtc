@@ -323,6 +323,7 @@ func (r *RTPSender) Send(parameters RTPSendParameters) error {
 			}),
 		)
 		writeStream.interceptor.Store(rtpInterceptor)
+		writeStream.srtpStream = srtpStream
 	}
 
 	close(r.sendCalled)

@@ -12,6 +12,11 @@ type TrackLocalWriter interface {
 
 	// Write encrypts and writes a full RTP packet
 	Write(b []byte) (int, error)
+
+	// EncryptRTP marshals and encrypts an RTP packet, writing to the dst buffer
+	// provided. If the dst buffer does not have the capacity, a new one will be
+	// allocated and returned.
+	EncryptRTP(dst []byte, header *rtp.Header, payload []byte) (ciphertext []byte, err error)
 }
 
 // TrackLocalContext is the Context passed when a TrackLocal has been Binded/Unbinded from a PeerConnection, and used

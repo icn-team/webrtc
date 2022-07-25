@@ -136,3 +136,15 @@ func (s *srtpWriterFuture) Write(b []byte) (int, error) {
 
 	return s.Write(b)
 }
+
+func (s *srtpWriterFuture) EncryptRTP(dst []byte, header *rtp.Header, payload []byte) (ciphertext []byte, err error) {
+	if value, ok := s.rtpWriteStream.Load().(*srtp.WriteStreamSRTP); ok {
+		return value.EncryptRTP(dst, header, payload)
+	}
+
+	if err := s.init(true); err != nil || s.rtpWriteStream.Load() == nil {
+		return nil, err
+	}
+
+	return s.EncryptRTP(dst, header, payload)
+}

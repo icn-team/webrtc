@@ -110,7 +110,10 @@ func ConfigureTWCCSender(mediaEngine *MediaEngine, interceptorRegistry *intercep
 	return nil
 }
 
-type interceptorToTrackLocalWriter struct{ interceptor atomic.Value } // interceptor.RTPWriter }
+type interceptorToTrackLocalWriter struct {
+	interceptor atomic.Value // interceptor.RTPWriter
+	srtpStream  *srtpWriterFuture
+}
 
 func (i *interceptorToTrackLocalWriter) WriteRTP(header *rtp.Header, payload []byte) (int, error) {
 	if writer, ok := i.interceptor.Load().(interceptor.RTPWriter); ok && writer != nil {
@@ -127,6 +130,10 @@ func (i *interceptorToTrackLocalWriter) Write(b []byte) (int, error) {
 	}
 
 	return i.WriteRTP(&packet.Header, packet.Payload)
+}
+
+func (i *interceptorToTrackLocalWriter) EncryptRTP(dst []byte, header *rtp.Header, payload []byte) (ciphertext []byte, err error) {
+	return i.srtpStream.EncryptRTP(dst, header, payload)
 }
 
 func createStreamInfo(id string, ssrc SSRC, payloadType PayloadType, codec RTPCodecCapability, webrtcHeaderExtensions []RTPHeaderExtensionParameter) *interceptor.StreamInfo {
