@@ -43,6 +43,9 @@ type Configuration struct {
 	// set of certificates is generated for each PeerConnection instance.
 	Certificates []Certificate `json:"certificates,omitempty"`
 
+	// A base64 encoded shared secret to be used for SDES.
+	SharedSecret string `json:"sharedSecret,omitempty"`
+
 	// ICECandidatePoolSize describes the size of the prefetched ICE pool.
 	ICECandidatePoolSize uint8 `json:"iceCandidatePoolSize,omitempty"`
 

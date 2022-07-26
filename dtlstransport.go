@@ -36,6 +36,7 @@ type DTLSTransport struct {
 
 	iceTransport          *ICETransport
 	certificates          []Certificate
+	sharedSecret          string
 	remoteParameters      DTLSParameters
 	remoteCertificate     []byte
 	state                 DTLSTransportState
@@ -59,7 +60,7 @@ type DTLSTransport struct {
 // NewDTLSTransport creates a new DTLSTransport.
 // This constructor is part of the ORTC API. It is not
 // meant to be used together with the basic WebRTC API.
-func (api *API) NewDTLSTransport(transport *ICETransport, certificates []Certificate) (*DTLSTransport, error) {
+func (api *API) NewDTLSTransport(transport *ICETransport, certificates []Certificate, sharedSecret string) (*DTLSTransport, error) {
 	t := &DTLSTransport{
 		iceTransport: transport,
 		api:          api,
@@ -87,6 +88,12 @@ func (api *API) NewDTLSTransport(transport *ICETransport, certificates []Certifi
 			return nil, err
 		}
 		t.certificates = []Certificate{*certificate}
+	}
+
+	if len(sharedSecret) > 0 {
+		t.sharedSecret = sharedSecret
+	} else {
+		t.sharedSecret = GetSharedSecret()
 	}
 
 	return t, nil

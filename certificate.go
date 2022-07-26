@@ -143,6 +143,10 @@ func GenerateCertificate(secretKey crypto.PrivateKey) (*Certificate, error) {
 	})
 }
 
+func GetSharedSecret() string {
+	return base64.StdEncoding.EncodeToString([]byte("hunter2"))
+}
+
 // CertificateFromX509 creates a new WebRTC Certificate from a given PrivateKey and Certificate
 //
 // This can be used if you want to share a certificate across multiple PeerConnections

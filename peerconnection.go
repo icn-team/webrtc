@@ -166,7 +166,7 @@ func (api *API) NewPeerConnection(configuration Configuration) (*PeerConnection,
 	pc.iceTransport = iceTransport
 
 	// Create the DTLS transport
-	dtlsTransport, err := pc.api.NewDTLSTransport(pc.iceTransport, pc.configuration.Certificates)
+	dtlsTransport, err := pc.api.NewDTLSTransport(pc.iceTransport, pc.configuration.Certificates, pc.configuration.SharedSecret)
 	if err != nil {
 		return nil, err
 	}
@@ -219,6 +219,12 @@ func (pc *PeerConnection) initConfiguration(configuration Configuration) error {
 			return err
 		}
 		pc.configuration.Certificates = []Certificate{*certificate}
+	}
+
+	if len(configuration.SharedSecret) > 0 {
+		pc.configuration.SharedSecret = configuration.SharedSecret
+	} else {
+		pc.configuration.SharedSecret = GetSharedSecret()
 	}
 
 	if configuration.BundlePolicy != BundlePolicy(Unknown) {
