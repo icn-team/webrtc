@@ -216,8 +216,12 @@ func (t *DTLSTransport) startSRTP() error {
 		)
 	}
 
-	connState := t.conn.ConnectionState()
-	err := srtpConfig.ExtractSessionKeysFromDTLS(&connState, t.role() == DTLSRoleClient)
+	sdes, err := dtls.NewSDES(t.sharedSecret, dtls.TLS_ECDHE_ECDSA_WITH_AES_128_CCM)
+	if err != nil {
+		return fmt.Errorf("%w: %v", errDtlsKeyExtractionFailed, err)
+	}
+
+	err = srtpConfig.ExtractSessionKeysFromDTLS(sdes, t.role() == DTLSRoleClient)
 	if err != nil {
 		return fmt.Errorf("%w: %v", errDtlsKeyExtractionFailed, err)
 	}
