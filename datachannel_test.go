@@ -70,7 +70,7 @@ func BenchmarkDataChannelSend8(b *testing.B)  { benchmarkDataChannelSend(b, 8) }
 func BenchmarkDataChannelSend16(b *testing.B) { benchmarkDataChannelSend(b, 16) }
 func BenchmarkDataChannelSend32(b *testing.B) { benchmarkDataChannelSend(b, 32) }
 
-// See https://github.com/pion/webrtc/issues/1516
+// See https://github.com/icn-team/webrtc/issues/1516
 func benchmarkDataChannelSend(b *testing.B, numChannels int) {
 	offerPC, answerPC, err := newPair()
 	if err != nil {

@@ -7,7 +7,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/pion/dtls/v2"
+	"github.com/icn-team/dtls/v2"
 	"github.com/pion/ice/v2"
 	"github.com/pion/logging"
 	"github.com/pion/transport/packetio"

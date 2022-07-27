@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pion/webrtc/v3"
-	"github.com/pion/webrtc/v3/examples/internal/signal"
+	"github.com/icn-team/webrtc/v3"
+	"github.com/icn-team/webrtc/v3/examples/internal/signal"
 )
 
 func main() {

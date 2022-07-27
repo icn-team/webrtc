@@ -1,6 +1,6 @@
 package webrtc
 
-import "github.com/pion/dtls/v2"
+import "github.com/icn-team/dtls/v2"
 
 const (
 	// Unknown defines default public constant to use for "enum" like struct
