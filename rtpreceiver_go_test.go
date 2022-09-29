@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pion/webrtc/v3/pkg/media"
+	"github.com/icn-team/webrtc/v3/pkg/media"
 	"github.com/stretchr/testify/assert"
 )
 

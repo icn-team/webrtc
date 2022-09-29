@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/icn-team/webrtc/v3"
 	"github.com/pion/ice/v2"
-	"github.com/pion/webrtc/v3"
 )
 
 var api *webrtc.API //nolint

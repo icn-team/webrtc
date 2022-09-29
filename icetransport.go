@@ -12,7 +12,7 @@ import (
 
 	"github.com/pion/ice/v2"
 	"github.com/pion/logging"
-	"github.com/pion/webrtc/v3/internal/mux"
+	"github.com/icn-team/webrtc/v3/internal/mux"
 )
 
 // ICETransport allows an application access to information about the ICE
