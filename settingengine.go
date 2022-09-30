@@ -63,7 +63,9 @@ type SettingEngine struct {
 	sdpMediaLevelFingerprints                 bool
 	answeringDTLSRole                         DTLSRole
 	disableCertificateFingerprintVerification bool
+	disableSRTPDecrypt                        bool
 	disableSRTPReplayProtection               bool
+	disableSRTCPDecrypt                       bool
 	disableSRTCPReplayProtection              bool
 	vnet                                      *vnet.Net
 	BufferFactory                             func(packetType packetio.BufferPacketType, ssrc uint32) io.ReadWriteCloser
@@ -179,9 +181,13 @@ func (e *SettingEngine) SetIPFilter(filter func(net.IP) bool) {
 // Two types of candidates are supported:
 //
 // ICECandidateTypeHost:
-//		The public IP address will be used for the host candidate in the SDP.
+//
+//	The public IP address will be used for the host candidate in the SDP.
+//
 // ICECandidateTypeSrflx:
-//		A server reflexive candidate with the given public IP address will be added
+//
+//	A server reflexive candidate with the given public IP address will be added
+//
 // to the SDP.
 //
 // Please note that if you choose ICECandidateTypeHost, then the private IP address
@@ -207,9 +213,12 @@ func (e *SettingEngine) SetIncludeLoopbackCandidate(include bool) {
 // may be useful when interacting with non-compliant clients or debugging issues.
 //
 // DTLSRoleActive:
-// 		Act as DTLS Client, send the ClientHello and starts the handshake
+//
+//	Act as DTLS Client, send the ClientHello and starts the handshake
+//
 // DTLSRolePassive:
-// 		Act as DTLS Server, wait for ClientHello
+//
+//	Act as DTLS Server, wait for ClientHello
 func (e *SettingEngine) SetAnsweringDTLSRole(role DTLSRole) error {
 	if role != DTLSRoleClient && role != DTLSRoleServer {
 		return errSettingEngineSetAnsweringDTLSRole
@@ -271,9 +280,19 @@ func (e *SettingEngine) SetSRTCPReplayProtectionWindow(n uint) {
 	e.replayProtection.SRTCP = &n
 }
 
+// DisableSRTPRDecrypt disables SRTP packet decryption.
+func (e *SettingEngine) DisableSRTPDecrypt(isDisabled bool) {
+	e.disableSRTPDecrypt = isDisabled
+}
+
 // DisableSRTPReplayProtection disables SRTP replay protection.
 func (e *SettingEngine) DisableSRTPReplayProtection(isDisabled bool) {
 	e.disableSRTPReplayProtection = isDisabled
+}
+
+// DisableSRTCPRDecrypt disables SRTCP packet decryption.
+func (e *SettingEngine) DisableSRTCPDecrypt(isDisabled bool) {
+	e.disableSRTCPDecrypt = isDisabled
 }
 
 // DisableSRTCPReplayProtection disables SRTCP replay protection.

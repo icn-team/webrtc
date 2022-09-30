@@ -110,7 +110,10 @@ func ConfigureTWCCSender(mediaEngine *MediaEngine, interceptorRegistry *intercep
 	return nil
 }
 
-type interceptorToTrackLocalWriter struct{ interceptor atomic.Value } // interceptor.RTPWriter }
+type interceptorToTrackLocalWriter struct {
+	interceptor atomic.Value // interceptor.RTPWriter
+	srtpStream  *srtpWriterFuture
+}
 
 func (i *interceptorToTrackLocalWriter) WriteRTP(header *rtp.Header, payload []byte) (int, error) {
 	if writer, ok := i.interceptor.Load().(interceptor.RTPWriter); ok && writer != nil {
@@ -120,6 +123,10 @@ func (i *interceptorToTrackLocalWriter) WriteRTP(header *rtp.Header, payload []b
 	return 0, nil
 }
 
+func (i *interceptorToTrackLocalWriter) WriteInsecureRTP(header *rtp.Header, payload []byte) (int, error) {
+	return i.srtpStream.WriteInsecureRTP(header, payload)
+}
+
 func (i *interceptorToTrackLocalWriter) Write(b []byte) (int, error) {
 	packet := &rtp.Packet{}
 	if err := packet.Unmarshal(b); err != nil {
@@ -127,6 +134,10 @@ func (i *interceptorToTrackLocalWriter) Write(b []byte) (int, error) {
 	}
 
 	return i.WriteRTP(&packet.Header, packet.Payload)
+}
+
+func (i *interceptorToTrackLocalWriter) WriteInsecure(b []byte) (int, error) {
+	return i.srtpStream.WriteInsecure(b)
 }
 
 func createStreamInfo(id string, ssrc SSRC, payloadType PayloadType, codec RTPCodecCapability, webrtcHeaderExtensions []RTPHeaderExtensionParameter) *interceptor.StreamInfo {

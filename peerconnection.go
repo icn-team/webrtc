@@ -74,16 +74,17 @@ type PeerConnection struct {
 	onDataChannelHandler              func(*DataChannel)
 	onNegotiationNeededHandler        atomic.Value // func()
 
-	iceGatherer   *ICEGatherer
-	iceTransport  *ICETransport
-	dtlsTransport *DTLSTransport
-	sctpTransport *SCTPTransport
+	iceGatherer       *ICEGatherer
+	iceTransport      *ICETransport
+	securityTransport SecurityTransport
+	sctpTransport     *SCTPTransport
 
 	// A reference to the associated API state used by this connection
 	api *API
 	log logging.LeveledLogger
 
-	interceptorRTCPWriter interceptor.RTCPWriter
+	interceptorRTCPWriter         interceptor.RTCPWriter
+	interceptorRTCPWriterInsecure interceptor.RTCPWriter
 }
 
 // NewPeerConnection creates a PeerConnection with the default codecs and
@@ -115,12 +116,13 @@ func (api *API) NewPeerConnection(configuration Configuration) (*PeerConnection,
 	pc := &PeerConnection{
 		statsID: fmt.Sprintf("PeerConnection-%d", time.Now().UnixNano()),
 		configuration: Configuration{
-			ICEServers:           []ICEServer{},
-			ICETransportPolicy:   ICETransportPolicyAll,
-			BundlePolicy:         BundlePolicyBalanced,
-			RTCPMuxPolicy:        RTCPMuxPolicyRequire,
-			Certificates:         []Certificate{},
-			ICECandidatePoolSize: 0,
+			ICEServers:            []ICEServer{},
+			ICETransportPolicy:    ICETransportPolicyAll,
+			BundlePolicy:          BundlePolicyBalanced,
+			RTCPMuxPolicy:         RTCPMuxPolicyRequire,
+			Certificates:          []Certificate{},
+			ICECandidatePoolSize:  0,
+			SecurityTransportType: SecurityTransportTypeDTLS,
 		},
 		ops:                    newOperations(),
 		isClosed:               &atomicBool{},
@@ -166,15 +168,25 @@ func (api *API) NewPeerConnection(configuration Configuration) (*PeerConnection,
 	iceTransport := pc.createICETransport()
 	pc.iceTransport = iceTransport
 
-	// Create the DTLS transport
-	dtlsTransport, err := pc.api.NewDTLSTransport(pc.iceTransport, pc.configuration.Certificates)
+	// Create the Security transport
+	var securityTransport SecurityTransport
+	switch pc.configuration.SecurityTransportType {
+	case SecurityTransportTypeShared:
+		pc.log.Infof("security transport set to SharedTransport")
+		securityTransport, err = pc.api.NewSharedTransport(pc.iceTransport)
+	case SecurityTransportTypeDTLS:
+		pc.log.Infof("security transport set to DTLSTransport")
+		securityTransport, err = pc.api.NewDTLSTransport(pc.iceTransport, pc.configuration.Certificates)
+	}
+
 	if err != nil {
 		return nil, err
 	}
-	pc.dtlsTransport = dtlsTransport
+
+	pc.securityTransport = securityTransport
 
 	// Create the SCTP transport
-	pc.sctpTransport = pc.api.NewSCTPTransport(pc.dtlsTransport)
+	pc.sctpTransport = pc.api.NewSCTPTransport(pc.securityTransport)
 
 	// Wire up the on datachannel handler
 	pc.sctpTransport.OnDataChannel(func(d *DataChannel) {
@@ -187,6 +199,7 @@ func (api *API) NewPeerConnection(configuration Configuration) (*PeerConnection,
 	})
 
 	pc.interceptorRTCPWriter = pc.api.interceptor.BindRTCPWriter(interceptor.RTCPWriterFunc(pc.writeRTCP))
+	pc.interceptorRTCPWriterInsecure = pc.api.interceptor.BindRTCPWriter(interceptor.RTCPWriterFunc(pc.writeInsecureRTCP))
 
 	return pc, nil
 }
@@ -240,6 +253,10 @@ func (pc *PeerConnection) initConfiguration(configuration Configuration) error {
 
 	if configuration.SDPSemantics != SDPSemantics(Unknown) {
 		pc.configuration.SDPSemantics = configuration.SDPSemantics
+	}
+
+	if configuration.SecurityTransportType != SecurityTransportType(Unknown) {
+		pc.configuration.SecurityTransportType = configuration.SecurityTransportType
 	}
 
 	sanitizedICEServers := configuration.getICEServers()
@@ -728,7 +745,7 @@ func (pc *PeerConnection) createICEGatherer() (*ICEGatherer, error) {
 
 // Update the PeerConnectionState given the state of relevant transports
 // https://www.w3.org/TR/webrtc/#rtcpeerconnectionstate-enum
-func (pc *PeerConnection) updateConnectionState(iceConnectionState ICEConnectionState, dtlsTransportState DTLSTransportState) {
+func (pc *PeerConnection) updateConnectionState(iceConnectionState ICEConnectionState, securityTransportState SecurityTransportState) {
 	connectionState := PeerConnectionStateNew
 	switch {
 	// The RTCPeerConnection object's [[IsClosed]] slot is true.
@@ -736,7 +753,7 @@ func (pc *PeerConnection) updateConnectionState(iceConnectionState ICEConnection
 		connectionState = PeerConnectionStateClosed
 
 	// Any of the RTCIceTransports or RTCDtlsTransports are in a "failed" state.
-	case iceConnectionState == ICEConnectionStateFailed || dtlsTransportState == DTLSTransportStateFailed:
+	case iceConnectionState == ICEConnectionStateFailed || securityTransportState == SecurityTransportStateFailed:
 		connectionState = PeerConnectionStateFailed
 
 	// Any of the RTCIceTransports or RTCDtlsTransports are in the "disconnected"
@@ -746,12 +763,12 @@ func (pc *PeerConnection) updateConnectionState(iceConnectionState ICEConnection
 
 	// All RTCIceTransports and RTCDtlsTransports are in the "connected", "completed" or "closed"
 	// state and at least one of them is in the "connected" or "completed" state.
-	case iceConnectionState == ICEConnectionStateConnected && dtlsTransportState == DTLSTransportStateConnected:
+	case iceConnectionState == ICEConnectionStateConnected && securityTransportState == SecurityTransportStateConnected:
 		connectionState = PeerConnectionStateConnected
 
 	//  Any of the RTCIceTransports or RTCDtlsTransports are in the "connecting" or
 	// "checking" state and none of them is in the "failed" state.
-	case iceConnectionState == ICEConnectionStateChecking && dtlsTransportState == DTLSTransportStateConnecting:
+	case iceConnectionState == ICEConnectionStateChecking && securityTransportState == SecurityTransportStateConnecting:
 		connectionState = PeerConnectionStateConnecting
 	}
 
@@ -786,7 +803,7 @@ func (pc *PeerConnection) createICETransport() *ICETransport {
 			return
 		}
 		pc.onICEConnectionStateChange(cs)
-		pc.updateConnectionState(cs, pc.dtlsTransport.State())
+		pc.updateConnectionState(cs, pc.securityTransport.State())
 	})
 
 	return t
@@ -1075,7 +1092,7 @@ func (pc *PeerConnection) SetRemoteDescription(desc SessionDescription) error { 
 
 			switch {
 			case t == nil:
-				receiver, err := pc.api.NewRTPReceiver(kind, pc.dtlsTransport)
+				receiver, err := pc.api.NewRTPReceiver(kind, pc.securityTransport)
 				if err != nil {
 					return err
 				}
@@ -1361,7 +1378,7 @@ func (pc *PeerConnection) configureRTPReceivers(isRenegotiation bool, remoteDesc
 				continue
 			}
 
-			receiver, err := pc.api.NewRTPReceiver(receiver.kind, pc.dtlsTransport)
+			receiver, err := pc.api.NewRTPReceiver(receiver.kind, pc.securityTransport)
 			if err != nil {
 				pc.log.Warnf("Failed to create new RtpReceiver: %s", err)
 				continue
@@ -1564,7 +1581,7 @@ func (pc *PeerConnection) handleIncomingSSRC(rtpStream io.Reader, ssrc SSRC) err
 	}
 
 	streamInfo := createStreamInfo("", ssrc, params.Codecs[0].PayloadType, params.Codecs[0].RTPCodecCapability, params.HeaderExtensions)
-	readStream, interceptor, rtcpReadStream, rtcpInterceptor, err := pc.dtlsTransport.streamsForSSRC(ssrc, *streamInfo)
+	readStream, interceptor, rtcpReadStream, rtcpInterceptor, err := pc.securityTransport.streamsForSSRC(ssrc, *streamInfo)
 	if err != nil {
 		return err
 	}
@@ -1617,7 +1634,7 @@ func (pc *PeerConnection) undeclaredMediaProcessor() {
 func (pc *PeerConnection) undeclaredRTPMediaProcessor() {
 	var simulcastRoutineCount uint64
 	for {
-		srtpSession, err := pc.dtlsTransport.getSRTPSession()
+		srtpSession, err := pc.securityTransport.getSRTPSession()
 		if err != nil {
 			pc.log.Warnf("undeclaredMediaProcessor failed to open SrtpSession: %v", err)
 			return
@@ -1639,14 +1656,14 @@ func (pc *PeerConnection) undeclaredRTPMediaProcessor() {
 		if atomic.AddUint64(&simulcastRoutineCount, 1) >= simulcastMaxProbeRoutines {
 			atomic.AddUint64(&simulcastRoutineCount, ^uint64(0))
 			pc.log.Warn(ErrSimulcastProbeOverflow.Error())
-			pc.dtlsTransport.storeSimulcastStream(stream)
+			pc.securityTransport.storeSimulcastStream(stream)
 			continue
 		}
 
 		go func(rtpStream io.Reader, ssrc SSRC) {
 			if err := pc.handleIncomingSSRC(rtpStream, ssrc); err != nil {
 				pc.log.Errorf(incomingUnhandledRTPSsrc, ssrc, err)
-				pc.dtlsTransport.storeSimulcastStream(stream)
+				pc.securityTransport.storeSimulcastStream(stream)
 			}
 			atomic.AddUint64(&simulcastRoutineCount, ^uint64(0))
 		}(stream, SSRC(ssrc))
@@ -1661,7 +1678,7 @@ func (pc *PeerConnection) undeclaredRTCPMediaProcessor() {
 		}
 	}()
 	for {
-		srtcpSession, err := pc.dtlsTransport.getSRTCPSession()
+		srtcpSession, err := pc.securityTransport.getSRTCPSession()
 		if err != nil {
 			pc.log.Warnf("undeclaredMediaProcessor failed to open SrtcpSession: %v", err)
 			return
@@ -1780,7 +1797,7 @@ func (pc *PeerConnection) AddTrack(track TrackLocal) (*RTPSender, error) {
 		// that's worked for all browsers.
 		if !t.stopped && t.kind == track.Kind() && t.Sender() == nil &&
 			!(currentDirection == RTPTransceiverDirectionSendrecv || currentDirection == RTPTransceiverDirectionSendonly) {
-			sender, err := pc.api.NewRTPSender(track, pc.dtlsTransport)
+			sender, err := pc.api.NewRTPSender(track, pc.securityTransport)
 			if err == nil {
 				err = t.SetSender(sender, track)
 				if err != nil {
@@ -1837,13 +1854,13 @@ func (pc *PeerConnection) newTransceiverFromTrack(direction RTPTransceiverDirect
 	)
 	switch direction {
 	case RTPTransceiverDirectionSendrecv:
-		r, err = pc.api.NewRTPReceiver(track.Kind(), pc.dtlsTransport)
+		r, err = pc.api.NewRTPReceiver(track.Kind(), pc.securityTransport)
 		if err != nil {
 			return
 		}
-		s, err = pc.api.NewRTPSender(track, pc.dtlsTransport)
+		s, err = pc.api.NewRTPSender(track, pc.securityTransport)
 	case RTPTransceiverDirectionSendonly:
-		s, err = pc.api.NewRTPSender(track, pc.dtlsTransport)
+		s, err = pc.api.NewRTPSender(track, pc.securityTransport)
 	default:
 		err = errPeerConnAddTransceiverFromTrackSupport
 	}
@@ -1880,7 +1897,7 @@ func (pc *PeerConnection) AddTransceiverFromKind(kind RTPCodecType, init ...RTPT
 			return nil, err
 		}
 	case RTPTransceiverDirectionRecvonly:
-		receiver, err := pc.api.NewRTPReceiver(kind, pc.dtlsTransport)
+		receiver, err := pc.api.NewRTPReceiver(kind, pc.securityTransport)
 		if err != nil {
 			return nil, err
 		}
@@ -2010,8 +2027,20 @@ func (pc *PeerConnection) WriteRTCP(pkts []rtcp.Packet) error {
 	return err
 }
 
+// WriteInsecureRTCP sends a user provided RTCP packet to the connected peer
+// without encryption. If no peer is connected the packet is discarded. It also
+// runs any configured interceptors.
+func (pc *PeerConnection) WriteInsecureRTCP(pkts []rtcp.Packet) error {
+	_, err := pc.interceptorRTCPWriterInsecure.Write(pkts, make(interceptor.Attributes))
+	return err
+}
+
 func (pc *PeerConnection) writeRTCP(pkts []rtcp.Packet, _ interceptor.Attributes) (int, error) {
-	return pc.dtlsTransport.WriteRTCP(pkts)
+	return pc.securityTransport.WriteRTCP(pkts)
+}
+
+func (pc *PeerConnection) writeInsecureRTCP(pkts []rtcp.Packet, _ interceptor.Attributes) (int, error) {
+	return pc.securityTransport.WriteInsecureRTCP(pkts)
 }
 
 // Close ends the PeerConnection
@@ -2057,7 +2086,7 @@ func (pc *PeerConnection) Close() error {
 	}
 
 	// https://www.w3.org/TR/webrtc/#dom-rtcpeerconnection-close (step #7)
-	closeErrs = append(closeErrs, pc.dtlsTransport.Stop())
+	closeErrs = append(closeErrs, pc.securityTransport.Stop())
 
 	// https://www.w3.org/TR/webrtc/#dom-rtcpeerconnection-close (step #8, #9, #10)
 	if pc.iceTransport != nil {
@@ -2065,7 +2094,7 @@ func (pc *PeerConnection) Close() error {
 	}
 
 	// https://www.w3.org/TR/webrtc/#dom-rtcpeerconnection-close (step #11)
-	pc.updateConnectionState(pc.ICEConnectionState(), pc.dtlsTransport.State())
+	pc.updateConnectionState(pc.ICEConnectionState(), pc.securityTransport.State())
 
 	return util.FlattenErrs(closeErrs)
 }
@@ -2238,11 +2267,11 @@ func (pc *PeerConnection) startTransports(iceRole ICERole, dtlsRole DTLSRole, re
 	}
 
 	// Start the dtls transport
-	err = pc.dtlsTransport.Start(DTLSParameters{
-		Role:         dtlsRole,
-		Fingerprints: []DTLSFingerprint{{Algorithm: fingerprintHash, Value: fingerprint}},
+	err = pc.securityTransport.Start(SecurityParameters{
+		DTLSRole:         dtlsRole,
+		DTLSFingerprints: []DTLSFingerprint{{Algorithm: fingerprintHash, Value: fingerprint}},
 	})
-	pc.updateConnectionState(pc.ICEConnectionState(), pc.dtlsTransport.State())
+	pc.updateConnectionState(pc.ICEConnectionState(), pc.securityTransport.State())
 	if err != nil {
 		pc.log.Warnf("Failed to start manager: %s", err)
 		return
@@ -2256,7 +2285,7 @@ func (pc *PeerConnection) startRTP(isRenegotiation bool, remoteDesc *SessionDesc
 	}
 
 	pc.startRTPReceivers(remoteDesc, currentTransceivers)
-	if haveApplicationMediaSection(remoteDesc.parsed) {
+	if pc.configuration.SecurityTransportType == SecurityTransportTypeDTLS && haveApplicationMediaSection(remoteDesc.parsed) {
 		pc.startSCTP()
 	}
 }
@@ -2469,4 +2498,17 @@ func (pc *PeerConnection) setGatherCompleteHandler(handler func()) {
 // https://www.w3.org/TR/webrtc/#attributes-15
 func (pc *PeerConnection) SCTP() *SCTPTransport {
 	return pc.sctpTransport
+}
+
+func (pc *PeerConnection) UpdateKeys(exporter srtp.KeyingMaterialExporter) error {
+	switch pc.configuration.SecurityTransportType {
+	case SecurityTransportTypeShared:
+		securityTransport := pc.securityTransport.(*SharedTransport)
+		securityTransport.UpdateKeys(exporter)
+		pc.log.Infof("updated SharedTransport keys")
+	case SecurityTransportTypeDTLS:
+		break
+	}
+
+	return nil
 }

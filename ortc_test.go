@@ -33,7 +33,7 @@ func (s *testORTCStack) setSignal(sig *testORTCSignal, isOffer bool) error {
 	}
 
 	// Start the DTLS transport
-	err = s.dtls.Start(sig.DTLSParameters)
+	err = s.dtls.Start(sig.SecurityParameters)
 	if err != nil {
 		return err
 	}
@@ -70,7 +70,7 @@ func (s *testORTCStack) getSignal() (*testORTCSignal, error) {
 		return nil, err
 	}
 
-	dtlsParams, err := s.dtls.GetLocalParameters()
+	securityParams, err := s.dtls.GetLocalParameters()
 	if err != nil {
 		return nil, err
 	}
@@ -78,10 +78,10 @@ func (s *testORTCStack) getSignal() (*testORTCSignal, error) {
 	sctpCapabilities := s.sctp.GetCapabilities()
 
 	return &testORTCSignal{
-		ICECandidates:    iceCandidates,
-		ICEParameters:    iceParams,
-		DTLSParameters:   dtlsParams,
-		SCTPCapabilities: sctpCapabilities,
+		ICECandidates:      iceCandidates,
+		ICEParameters:      iceParams,
+		SecurityParameters: securityParams,
+		SCTPCapabilities:   sctpCapabilities,
 	}, nil
 }
 
@@ -100,10 +100,10 @@ func (s *testORTCStack) close() error {
 }
 
 type testORTCSignal struct {
-	ICECandidates    []ICECandidate
-	ICEParameters    ICEParameters
-	DTLSParameters   DTLSParameters
-	SCTPCapabilities SCTPCapabilities
+	ICECandidates      []ICECandidate
+	ICEParameters      ICEParameters
+	SecurityParameters SecurityParameters
+	SCTPCapabilities   SCTPCapabilities
 }
 
 func newORTCPair() (stackA *testORTCStack, stackB *testORTCStack, err error) {

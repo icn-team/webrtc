@@ -19,12 +19,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/icn-team/webrtc/v3/internal/util"
+	"github.com/icn-team/webrtc/v3/pkg/rtcerr"
 	"github.com/pion/ice/v2"
 	"github.com/pion/rtp"
 	"github.com/pion/transport/test"
 	"github.com/pion/transport/vnet"
-	"github.com/icn-team/webrtc/v3/internal/util"
-	"github.com/icn-team/webrtc/v3/pkg/rtcerr"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -354,8 +354,8 @@ func TestPeerConnection_ShutdownNoDTLS(t *testing.T) {
 	dropAllDTLS := func([]byte) bool {
 		return false
 	}
-	offerPC.dtlsTransport.dtlsMatcher = dropAllDTLS
-	answerPC.dtlsTransport.dtlsMatcher = dropAllDTLS
+	offerPC.securityTransport.(*DTLSTransport).dtlsMatcher = dropAllDTLS
+	answerPC.securityTransport.(*DTLSTransport).dtlsMatcher = dropAllDTLS
 
 	if err = signalPair(offerPC, answerPC); err != nil {
 		t.Fatal(err)

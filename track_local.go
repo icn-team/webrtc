@@ -10,8 +10,14 @@ type TrackLocalWriter interface {
 	// WriteRTP encrypts a RTP packet and writes to the connection
 	WriteRTP(header *rtp.Header, payload []byte) (int, error)
 
+	// WriteInsecureRTP writes a RTP packet to the connection
+	WriteInsecureRTP(header *rtp.Header, payload []byte) (int, error)
+
 	// Write encrypts and writes a full RTP packet
 	Write(b []byte) (int, error)
+
+	// WriteInsecure writes a full RTP packet
+	WriteInsecure(b []byte) (int, error)
 }
 
 // TrackLocalContext is the Context passed when a TrackLocal has been Binded/Unbinded from a PeerConnection, and used

@@ -15,13 +15,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/icn-team/webrtc/v3/pkg/media"
 	"github.com/pion/logging"
 	"github.com/pion/randutil"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/sdp/v3"
 	"github.com/pion/transport/test"
-	"github.com/icn-team/webrtc/v3/pkg/media"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -666,8 +666,8 @@ func TestAddTransceiverAddTrack_NewRTPSender_Error(t *testing.T) {
 	)
 	assert.NoError(t, err)
 
-	dtlsTransport := pc.dtlsTransport
-	pc.dtlsTransport = nil
+	securityTransport := pc.securityTransport
+	pc.securityTransport = nil
 
 	track, err := NewTrackLocalStaticSample(RTPCodecCapability{MimeType: MimeTypeVP8}, "foo", "bar")
 	assert.NoError(t, err)
@@ -677,7 +677,7 @@ func TestAddTransceiverAddTrack_NewRTPSender_Error(t *testing.T) {
 
 	assert.Equal(t, 1, len(pc.GetTransceivers()))
 
-	pc.dtlsTransport = dtlsTransport
+	pc.securityTransport = securityTransport
 	assert.NoError(t, pc.Close())
 }
 
@@ -1009,11 +1009,11 @@ func TestPeerConnection_Simulcast_Probe(t *testing.T) {
 				case <-testFinished:
 					return
 				case <-ticker.C:
-					answerer.dtlsTransport.lock.Lock()
-					if len(answerer.dtlsTransport.simulcastStreams) >= 5 {
+					answerer.securityTransport.(*DTLSTransport).lock.Lock()
+					if len(answerer.securityTransport.(*DTLSTransport).simulcastStreams) >= 5 {
 						seenFiveStreamsCancel()
 					}
-					answerer.dtlsTransport.lock.Unlock()
+					answerer.securityTransport.(*DTLSTransport).lock.Unlock()
 
 					track.mu.Lock()
 					if len(track.bindings) == 1 {

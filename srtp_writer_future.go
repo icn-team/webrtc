@@ -9,8 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pion/rtp"
 	"github.com/icn-team/srtp/v2"
+	"github.com/pion/rtp"
 )
 
 // srtpWriterFuture blocks Read/Write calls until
@@ -25,11 +25,13 @@ type srtpWriterFuture struct {
 }
 
 func (s *srtpWriterFuture) init(returnWhenNoSRTP bool) error {
+	srtpReady := s.rtpSender.transport.SRTPReady()
+
 	if returnWhenNoSRTP {
 		select {
 		case <-s.rtpSender.stopCalled:
 			return io.ErrClosedPipe
-		case <-s.rtpSender.transport.srtpReady:
+		case <-srtpReady:
 		default:
 			return nil
 		}
@@ -37,7 +39,7 @@ func (s *srtpWriterFuture) init(returnWhenNoSRTP bool) error {
 		select {
 		case <-s.rtpSender.stopCalled:
 			return io.ErrClosedPipe
-		case <-s.rtpSender.transport.srtpReady:
+		case <-srtpReady:
 		}
 	}
 
@@ -125,6 +127,18 @@ func (s *srtpWriterFuture) WriteRTP(header *rtp.Header, payload []byte) (int, er
 	return s.WriteRTP(header, payload)
 }
 
+func (s *srtpWriterFuture) WriteInsecureRTP(header *rtp.Header, payload []byte) (int, error) {
+	if value, ok := s.rtpWriteStream.Load().(*srtp.WriteStreamSRTP); ok {
+		return value.WriteInsecureRTP(header, payload)
+	}
+
+	if err := s.init(true); err != nil || s.rtpWriteStream.Load() == nil {
+		return 0, err
+	}
+
+	return s.WriteInsecureRTP(header, payload)
+}
+
 func (s *srtpWriterFuture) Write(b []byte) (int, error) {
 	if value, ok := s.rtpWriteStream.Load().(*srtp.WriteStreamSRTP); ok {
 		return value.Write(b)
@@ -135,4 +149,16 @@ func (s *srtpWriterFuture) Write(b []byte) (int, error) {
 	}
 
 	return s.Write(b)
+}
+
+func (s *srtpWriterFuture) WriteInsecure(b []byte) (int, error) {
+	if value, ok := s.rtpWriteStream.Load().(*srtp.WriteStreamSRTP); ok {
+		return value.WriteInsecure(b)
+	}
+
+	if err := s.init(true); err != nil || s.rtpWriteStream.Load() == nil {
+		return 0, err
+	}
+
+	return s.WriteInsecure(b)
 }

@@ -82,7 +82,7 @@ func main() {
 		panic(err)
 	}
 
-	dtlsParams, err := dtls.GetLocalParameters()
+	securityParams, err := dtls.GetLocalParameters()
 	if err != nil {
 		panic(err)
 	}
@@ -90,10 +90,10 @@ func main() {
 	sctpCapabilities := sctp.GetCapabilities()
 
 	s := Signal{
-		ICECandidates:    iceCandidates,
-		ICEParameters:    iceParams,
-		DTLSParameters:   dtlsParams,
-		SCTPCapabilities: sctpCapabilities,
+		ICECandidates:      iceCandidates,
+		ICEParameters:      iceParams,
+		SecurityParameters: securityParams,
+		SCTPCapabilities:   sctpCapabilities,
 	}
 
 	// Exchange the information
@@ -118,7 +118,7 @@ func main() {
 	}
 
 	// Start the DTLS transport
-	err = dtls.Start(remoteSignal.DTLSParameters)
+	err = dtls.Start(remoteSignal.SecurityParameters)
 	if err != nil {
 		panic(err)
 	}
@@ -158,10 +158,10 @@ func main() {
 // This is not part of the ORTC spec. You are free
 // to exchange this information any way you want.
 type Signal struct {
-	ICECandidates    []webrtc.ICECandidate   `json:"iceCandidates"`
-	ICEParameters    webrtc.ICEParameters    `json:"iceParameters"`
-	DTLSParameters   webrtc.DTLSParameters   `json:"dtlsParameters"`
-	SCTPCapabilities webrtc.SCTPCapabilities `json:"sctpCapabilities"`
+	ICECandidates      []webrtc.ICECandidate     `json:"iceCandidates"`
+	ICEParameters      webrtc.ICEParameters      `json:"iceParameters"`
+	SecurityParameters webrtc.SecurityParameters `json:"dtlsParameters"`
+	SCTPCapabilities   webrtc.SCTPCapabilities   `json:"sctpCapabilities"`
 }
 
 func handleOnOpen(channel *webrtc.DataChannel) func() {

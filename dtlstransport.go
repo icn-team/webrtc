@@ -16,15 +16,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/icn-team/srtp/v2"
+	"github.com/icn-team/webrtc/v3/internal/mux"
+	"github.com/icn-team/webrtc/v3/internal/util"
+	"github.com/icn-team/webrtc/v3/pkg/rtcerr"
 	"github.com/pion/dtls/v2"
 	"github.com/pion/dtls/v2/pkg/crypto/fingerprint"
 	"github.com/pion/interceptor"
 	"github.com/pion/logging"
 	"github.com/pion/rtcp"
-	"github.com/icn-team/srtp/v2"
-	"github.com/icn-team/webrtc/v3/internal/mux"
-	"github.com/icn-team/webrtc/v3/internal/util"
-	"github.com/icn-team/webrtc/v3/pkg/rtcerr"
 )
 
 // DTLSTransport allows an application access to information about the DTLS
@@ -36,12 +36,12 @@ type DTLSTransport struct {
 
 	iceTransport          *ICETransport
 	certificates          []Certificate
-	remoteParameters      DTLSParameters
+	remoteParameters      SecurityParameters
 	remoteCertificate     []byte
-	state                 DTLSTransportState
+	state                 SecurityTransportState
 	srtpProtectionProfile srtp.ProtectionProfile
 
-	onStateChangeHandler func(DTLSTransportState)
+	onStateChangeHandler func(SecurityTransportState)
 
 	conn *dtls.Conn
 
@@ -63,7 +63,7 @@ func (api *API) NewDTLSTransport(transport *ICETransport, certificates []Certifi
 	t := &DTLSTransport{
 		iceTransport: transport,
 		api:          api,
-		state:        DTLSTransportStateNew,
+		state:        SecurityTransportStateNew,
 		dtlsMatcher:  mux.MatchDTLS,
 		srtpReady:    make(chan struct{}),
 		log:          api.settingEngine.LoggerFactory.NewLogger("DTLSTransport"),
@@ -101,7 +101,7 @@ func (t *DTLSTransport) ICETransport() *ICETransport {
 }
 
 // onStateChange requires the caller holds the lock
-func (t *DTLSTransport) onStateChange(state DTLSTransportState) {
+func (t *DTLSTransport) onStateChange(state SecurityTransportState) {
 	t.state = state
 	handler := t.onStateChangeHandler
 	if handler != nil {
@@ -111,14 +111,14 @@ func (t *DTLSTransport) onStateChange(state DTLSTransportState) {
 
 // OnStateChange sets a handler that is fired when the DTLS
 // connection state changes.
-func (t *DTLSTransport) OnStateChange(f func(DTLSTransportState)) {
+func (t *DTLSTransport) OnStateChange(f func(SecurityTransportState)) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	t.onStateChangeHandler = f
 }
 
 // State returns the current dtls transport state.
-func (t *DTLSTransport) State() DTLSTransportState {
+func (t *DTLSTransport) State() SecurityTransportState {
 	t.lock.RLock()
 	defer t.lock.RUnlock()
 	return t.state
@@ -148,22 +148,46 @@ func (t *DTLSTransport) WriteRTCP(pkts []rtcp.Packet) (int, error) {
 	return 0, nil
 }
 
+// WriteInsecureRTCP sends a user provided RTCP packet to the connected peer
+// without encryption. If no peer is connected the packet is discarded.
+func (t *DTLSTransport) WriteInsecureRTCP(pkts []rtcp.Packet) (int, error) {
+	raw, err := rtcp.Marshal(pkts)
+	if err != nil {
+		return 0, err
+	}
+
+	srtcpSession, err := t.getSRTCPSession()
+	if err != nil {
+		return 0, err
+	}
+
+	writeStream, err := srtcpSession.OpenWriteStream()
+	if err != nil {
+		return 0, fmt.Errorf("%w: %v", errPeerConnWriteRTCPOpenWriteStream, err)
+	}
+
+	if n, err := writeStream.WriteInsecure(raw); err != nil {
+		return n, err
+	}
+	return 0, nil
+}
+
 // GetLocalParameters returns the DTLS parameters of the local DTLSTransport upon construction.
-func (t *DTLSTransport) GetLocalParameters() (DTLSParameters, error) {
+func (t *DTLSTransport) GetLocalParameters() (SecurityParameters, error) {
 	fingerprints := []DTLSFingerprint{}
 
 	for _, c := range t.certificates {
 		prints, err := c.GetFingerprints()
 		if err != nil {
-			return DTLSParameters{}, err
+			return SecurityParameters{}, err
 		}
 
 		fingerprints = append(fingerprints, prints...)
 	}
 
-	return DTLSParameters{
-		Role:         DTLSRoleAuto, // always returns the default role
-		Fingerprints: fingerprints,
+	return SecurityParameters{
+		DTLSRole:         DTLSRoleAuto, // always returns the default role
+		DTLSFingerprints: fingerprints,
 	}, nil
 }
 
@@ -210,7 +234,7 @@ func (t *DTLSTransport) startSRTP() error {
 	}
 
 	connState := t.conn.ConnectionState()
-	err := srtpConfig.ExtractSessionKeysFromDTLS(&connState, t.role() == DTLSRoleClient)
+	err := srtpConfig.ExtractSessionKeysFromDTLS(&connState, t.dtlsRole() == DTLSRoleClient)
 	if err != nil {
 		return fmt.Errorf("%w: %v", errDtlsKeyExtractionFailed, err)
 	}
@@ -247,9 +271,9 @@ func (t *DTLSTransport) getSRTCPSession() (*srtp.SessionSRTCP, error) {
 	return nil, errDtlsTransportNotStarted
 }
 
-func (t *DTLSTransport) role() DTLSRole {
+func (t *DTLSTransport) dtlsRole() DTLSRole {
 	// If remote has an explicit role use the inverse
-	switch t.remoteParameters.Role {
+	switch t.remoteParameters.DTLSRole {
 	case DTLSRoleClient:
 		return DTLSRoleServer
 	case DTLSRoleServer:
@@ -274,7 +298,7 @@ func (t *DTLSTransport) role() DTLSRole {
 }
 
 // Start DTLS transport negotiation with the parameters of the remote DTLS transport
-func (t *DTLSTransport) Start(remoteParameters DTLSParameters) error {
+func (t *DTLSTransport) Start(remoteParameters SecurityParameters) error {
 	// Take lock and prepare connection, we must not hold the lock
 	// when connecting
 	prepareTransport := func() (DTLSRole, *dtls.Config, error) {
@@ -285,7 +309,7 @@ func (t *DTLSTransport) Start(remoteParameters DTLSParameters) error {
 			return DTLSRole(0), nil, err
 		}
 
-		if t.state != DTLSTransportStateNew {
+		if t.state != SecurityTransportStateNew {
 			return DTLSRole(0), nil, &rtcerr.InvalidStateError{Err: fmt.Errorf("%w: %s", errInvalidDTLSStart, t.state)}
 		}
 
@@ -294,9 +318,9 @@ func (t *DTLSTransport) Start(remoteParameters DTLSParameters) error {
 		t.remoteParameters = remoteParameters
 
 		cert := t.certificates[0]
-		t.onStateChange(DTLSTransportStateConnecting)
+		t.onStateChange(SecurityTransportStateConnecting)
 
-		return t.role(), &dtls.Config{
+		return t.dtlsRole(), &dtls.Config{
 			Certificates: []tls.Certificate{
 				{
 					Certificate: [][]byte{cert.x509Cert.Raw},
@@ -344,13 +368,13 @@ func (t *DTLSTransport) Start(remoteParameters DTLSParameters) error {
 	defer t.lock.Unlock()
 
 	if err != nil {
-		t.onStateChange(DTLSTransportStateFailed)
+		t.onStateChange(SecurityTransportStateFailed)
 		return err
 	}
 
 	srtpProfile, ok := dtlsConn.SelectedSRTPProtectionProfile()
 	if !ok {
-		t.onStateChange(DTLSTransportStateFailed)
+		t.onStateChange(SecurityTransportStateFailed)
 		return ErrNoSRTPProtectionProfile
 	}
 
@@ -360,14 +384,14 @@ func (t *DTLSTransport) Start(remoteParameters DTLSParameters) error {
 	case dtls.SRTP_AES128_CM_HMAC_SHA1_80:
 		t.srtpProtectionProfile = srtp.ProtectionProfileAes128CmHmacSha1_80
 	default:
-		t.onStateChange(DTLSTransportStateFailed)
+		t.onStateChange(SecurityTransportStateFailed)
 		return ErrNoSRTPProtectionProfile
 	}
 
 	// Check the fingerprint if a certificate was exchanged
 	remoteCerts := dtlsConn.ConnectionState().PeerCertificates
 	if len(remoteCerts) == 0 {
-		t.onStateChange(DTLSTransportStateFailed)
+		t.onStateChange(SecurityTransportStateFailed)
 		return errNoRemoteCertificate
 	}
 	t.remoteCertificate = remoteCerts[0]
@@ -379,7 +403,7 @@ func (t *DTLSTransport) Start(remoteParameters DTLSParameters) error {
 				t.log.Error(err.Error())
 			}
 
-			t.onStateChange(DTLSTransportStateFailed)
+			t.onStateChange(SecurityTransportStateFailed)
 			return err
 		}
 
@@ -388,13 +412,13 @@ func (t *DTLSTransport) Start(remoteParameters DTLSParameters) error {
 				t.log.Error(err.Error())
 			}
 
-			t.onStateChange(DTLSTransportStateFailed)
+			t.onStateChange(SecurityTransportStateFailed)
 			return err
 		}
 	}
 
 	t.conn = dtlsConn
-	t.onStateChange(DTLSTransportStateConnected)
+	t.onStateChange(SecurityTransportStateConnected)
 
 	return t.startSRTP()
 }
@@ -425,12 +449,12 @@ func (t *DTLSTransport) Stop() error {
 			closeErrs = append(closeErrs, err)
 		}
 	}
-	t.onStateChange(DTLSTransportStateClosed)
+	t.onStateChange(SecurityTransportStateClosed)
 	return util.FlattenErrs(closeErrs)
 }
 
 func (t *DTLSTransport) validateFingerPrint(remoteCert *x509.Certificate) error {
-	for _, fp := range t.remoteParameters.Fingerprints {
+	for _, fp := range t.remoteParameters.DTLSFingerprints {
 		hashAlgo, err := fingerprint.HashFromString(fp.Algorithm)
 		if err != nil {
 			return err
@@ -496,4 +520,8 @@ func (t *DTLSTransport) streamsForSSRC(ssrc SSRC, streamInfo interceptor.StreamI
 	}))
 
 	return rtpReadStream, rtpInterceptor, rtcpReadStream, rtcpInterceptor, nil
+}
+
+func (t *DTLSTransport) SRTPReady() <-chan struct{} {
+	return t.srtpReady
 }

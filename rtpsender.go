@@ -9,11 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/icn-team/webrtc/v3/internal/util"
 	"github.com/pion/interceptor"
 	"github.com/pion/randutil"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
-	"github.com/icn-team/webrtc/v3/internal/util"
 )
 
 type trackEncoding struct {
@@ -33,7 +33,7 @@ type trackEncoding struct {
 type RTPSender struct {
 	trackEncodings []*trackEncoding
 
-	transport *DTLSTransport
+	transport SecurityTransport
 
 	payloadType PayloadType
 	kind        RTPCodecType
@@ -55,7 +55,7 @@ type RTPSender struct {
 }
 
 // NewRTPSender constructs a new RTPSender
-func (api *API) NewRTPSender(track TrackLocal, transport *DTLSTransport) (*RTPSender, error) {
+func (api *API) NewRTPSender(track TrackLocal, transport SecurityTransport) (*RTPSender, error) {
 	if track == nil {
 		return nil, errRTPSenderTrackNil
 	} else if transport == nil {
@@ -101,7 +101,7 @@ func (r *RTPSender) setRTPTransceiver(rtpTransceiver *RTPTransceiver) {
 
 // Transport returns the currently-configured *DTLSTransport or nil
 // if one has not yet been configured
-func (r *RTPSender) Transport() *DTLSTransport {
+func (r *RTPSender) Transport() SecurityTransport {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.transport
@@ -323,6 +323,7 @@ func (r *RTPSender) Send(parameters RTPSendParameters) error {
 			}),
 		)
 		writeStream.interceptor.Store(rtpInterceptor)
+		writeStream.srtpStream = srtpStream
 	}
 
 	close(r.sendCalled)

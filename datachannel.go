@@ -12,9 +12,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/icn-team/webrtc/v3/pkg/rtcerr"
 	"github.com/pion/datachannel"
 	"github.com/pion/logging"
-	"github.com/icn-team/webrtc/v3/pkg/rtcerr"
 )
 
 const dataChannelBufferSize = math.MaxUint16 // message size limit for Chromium
@@ -159,7 +159,7 @@ func (d *DataChannel) open(sctpTransport *SCTPTransport) error {
 		// avoid holding lock when generating ID, since id generation locks
 		d.mu.Unlock()
 		var dcID *uint16
-		err := d.sctpTransport.generateAndSetDataChannelID(d.sctpTransport.dtlsTransport.role(), &dcID)
+		err := d.sctpTransport.generateAndSetDataChannelID(d.sctpTransport.securityTransport.dtlsRole(), &dcID)
 		if err != nil {
 			return err
 		}

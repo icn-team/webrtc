@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pion/interceptor"
-	"github.com/pion/rtcp"
 	"github.com/icn-team/srtp/v2"
 	"github.com/icn-team/webrtc/v3/internal/util"
+	"github.com/pion/interceptor"
+	"github.com/pion/rtcp"
 )
 
 // trackStreams maintains a mapping of RTP/RTCP streams to a specific track
@@ -38,7 +38,7 @@ type trackStreams struct {
 // RTPReceiver allows an application to inspect the receipt of a TrackRemote
 type RTPReceiver struct {
 	kind      RTPCodecType
-	transport *DTLSTransport
+	transport SecurityTransport
 
 	tracks []trackStreams
 
@@ -52,7 +52,7 @@ type RTPReceiver struct {
 }
 
 // NewRTPReceiver constructs a new RTPReceiver
-func (api *API) NewRTPReceiver(kind RTPCodecType, transport *DTLSTransport) (*RTPReceiver, error) {
+func (api *API) NewRTPReceiver(kind RTPCodecType, transport SecurityTransport) (*RTPReceiver, error) {
 	if transport == nil {
 		return nil, errRTPReceiverDTLSTransportNil
 	}
@@ -77,7 +77,7 @@ func (r *RTPReceiver) setRTPTransceiver(tr *RTPTransceiver) {
 
 // Transport returns the currently-configured *DTLSTransport or nil
 // if one has not yet been configured
-func (r *RTPReceiver) Transport() *DTLSTransport {
+func (r *RTPReceiver) Transport() SecurityTransport {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.transport

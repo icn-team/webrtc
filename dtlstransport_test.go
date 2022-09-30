@@ -89,11 +89,11 @@ func TestInvalidFingerprintCausesFailed(t *testing.T) {
 	offerConnectionHasFailed.Wait()
 	answerConnectionHasFailed.Wait()
 
-	assert.Equal(t, pcOffer.SCTP().Transport().State(), DTLSTransportStateFailed)
-	assert.Nil(t, pcOffer.SCTP().Transport().conn)
+	assert.Equal(t, pcOffer.SCTP().Transport().State(), SecurityTransportStateFailed)
+	assert.Nil(t, pcOffer.SCTP().Transport().(*DTLSTransport).conn)
 
-	assert.Equal(t, pcAnswer.SCTP().Transport().State(), DTLSTransportStateFailed)
-	assert.Nil(t, pcAnswer.SCTP().Transport().conn)
+	assert.Equal(t, pcAnswer.SCTP().Transport().State(), SecurityTransportStateFailed)
+	assert.Nil(t, pcAnswer.SCTP().Transport().(*DTLSTransport).conn)
 }
 
 func TestPeerConnection_DTLSRoleSettingEngine(t *testing.T) {
