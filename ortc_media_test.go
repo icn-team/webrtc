@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pion/transport/test"
 	"github.com/icn-team/webrtc/v3/pkg/media"
+	"github.com/pion/transport/test"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -31,7 +31,7 @@ func Test_ORTC_Media(t *testing.T) {
 	track, err := NewTrackLocalStaticSample(RTPCodecCapability{MimeType: MimeTypeVP8}, "video", "pion")
 	assert.NoError(t, err)
 
-	rtpSender, err := stackA.api.NewRTPSender(track, stackA.dtls, nil)
+	rtpSender, err := stackA.api.NewRTPSender(track, stackA.dtls)
 	assert.NoError(t, err)
 	assert.NoError(t, rtpSender.Send(rtpSender.GetParameters()))
 

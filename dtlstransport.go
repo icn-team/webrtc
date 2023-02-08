@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"bitbucket-eng-gpk1.cisco.com/bitbucket/scm/icn/iris/goiris/pkg/iris"
 	"github.com/icn-team/srtp/v2"
 	"github.com/icn-team/webrtc/v3/internal/mux"
 	"github.com/icn-team/webrtc/v3/internal/util"
@@ -54,12 +55,14 @@ type DTLSTransport struct {
 
 	api *API
 	log logging.LeveledLogger
+
+	irisTranport iris.IrisClient
 }
 
 // NewDTLSTransport creates a new DTLSTransport.
 // This constructor is part of the ORTC API. It is not
 // meant to be used together with the basic WebRTC API.
-func (api *API) NewDTLSTransport(transport *ICETransport, certificates []Certificate) (*DTLSTransport, error) {
+func (api *API) NewDTLSTransport(transport *ICETransport, certificates []Certificate, irisClient iris.IrisClient) (*DTLSTransport, error) {
 	t := &DTLSTransport{
 		iceTransport: transport,
 		api:          api,
@@ -67,6 +70,7 @@ func (api *API) NewDTLSTransport(transport *ICETransport, certificates []Certifi
 		dtlsMatcher:  mux.MatchDTLS,
 		srtpReady:    make(chan struct{}),
 		log:          api.settingEngine.LoggerFactory.NewLogger("DTLSTransport"),
+		irisTranport: irisClient,
 	}
 
 	if len(certificates) > 0 {
@@ -252,6 +256,13 @@ func (t *DTLSTransport) startSRTP() error {
 	t.srtpSession.Store(srtpSession)
 	t.srtcpSession.Store(srtcpSession)
 	close(t.srtpReady)
+
+	t.irisClient().SetCallback(iris.NewGoCallback(
+		receiveAudio(t),
+		receiveVideo(t),
+		receiveRTCP(t),
+	))
+
 	return nil
 }
 
@@ -524,4 +535,8 @@ func (t *DTLSTransport) streamsForSSRC(ssrc SSRC, streamInfo interceptor.StreamI
 
 func (t *DTLSTransport) SRTPReady() <-chan struct{} {
 	return t.srtpReady
+}
+
+func (t *DTLSTransport) irisClient() iris.IrisClient {
+	return t.irisTranport
 }

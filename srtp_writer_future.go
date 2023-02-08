@@ -230,9 +230,9 @@ func (s *srtpWriterFuture) writeInsecureIRIS(b []byte) (int, error) {
 func (s *srtpWriterFuture) sendIRIS(b []byte) (int, error) {
 	switch s.rtpSender.kind {
 	case RTPCodecTypeAudio:
-		s.rtpSender.irisClient.ProduceAudioRtp(string(b), uint(len(b)))
+		s.rtpSender.transport.irisClient().ProduceAudioRtp(string(b), uint(len(b)))
 	case RTPCodecTypeVideo:
-		s.rtpSender.irisClient.ProduceVideoRtp(string(b), uint(len(b)))
+		s.rtpSender.transport.irisClient().ProduceVideoRtp(string(b), uint(len(b)))
 	}
 	return len(b), nil
 }

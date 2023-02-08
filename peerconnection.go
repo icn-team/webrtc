@@ -158,16 +158,6 @@ func (api *API) NewPeerConnection(configuration Configuration) (*PeerConnection,
 		pc.api.mediaEngine = api.mediaEngine.copy()
 	}
 
-	if api.settingEngine.iris.enabled {
-		pc.irisClient = iris.NewIrisClient()
-		pc.irisClient.SetCallState(
-			uint(api.settingEngine.iris.callID),
-			uint(api.settingEngine.iris.clientID),
-			api.settingEngine.iris.serverIP,
-			uint(api.settingEngine.iris.serverPort),
-		)
-	}
-
 	if err = pc.initConfiguration(configuration); err != nil {
 		return nil, err
 	}
@@ -181,15 +171,26 @@ func (api *API) NewPeerConnection(configuration Configuration) (*PeerConnection,
 	iceTransport := pc.createICETransport()
 	pc.iceTransport = iceTransport
 
+	// Create IRIS client
+	if api.settingEngine.iris.enabled {
+		pc.irisClient = iris.NewIrisClient()
+		pc.irisClient.SetCallState(
+			uint(api.settingEngine.iris.callID),
+			uint(api.settingEngine.iris.clientID),
+			api.settingEngine.iris.serverIP,
+			uint(api.settingEngine.iris.serverPort),
+		)
+	}
+
 	// Create the Security transport
 	var securityTransport SecurityTransport
 	switch pc.configuration.SecurityTransportType {
 	case SecurityTransportTypeShared:
 		pc.log.Infof("security transport set to SharedTransport")
-		securityTransport, err = pc.api.NewSharedTransport(pc.iceTransport)
+		securityTransport, err = pc.api.NewSharedTransport(pc.iceTransport, pc.irisClient)
 	case SecurityTransportTypeDTLS:
 		pc.log.Infof("security transport set to DTLSTransport")
-		securityTransport, err = pc.api.NewDTLSTransport(pc.iceTransport, pc.configuration.Certificates)
+		securityTransport, err = pc.api.NewDTLSTransport(pc.iceTransport, pc.configuration.Certificates, pc.irisClient)
 	}
 
 	if err != nil {
@@ -1810,7 +1811,7 @@ func (pc *PeerConnection) AddTrack(track TrackLocal) (*RTPSender, error) {
 		// that's worked for all browsers.
 		if !t.stopped && t.kind == track.Kind() && t.Sender() == nil &&
 			!(currentDirection == RTPTransceiverDirectionSendrecv || currentDirection == RTPTransceiverDirectionSendonly) {
-			sender, err := pc.api.NewRTPSender(track, pc.securityTransport, pc.irisClient)
+			sender, err := pc.api.NewRTPSender(track, pc.securityTransport)
 			if err == nil {
 				err = t.SetSender(sender, track)
 				if err != nil {
@@ -1871,9 +1872,9 @@ func (pc *PeerConnection) newTransceiverFromTrack(direction RTPTransceiverDirect
 		if err != nil {
 			return
 		}
-		s, err = pc.api.NewRTPSender(track, pc.securityTransport, pc.irisClient)
+		s, err = pc.api.NewRTPSender(track, pc.securityTransport)
 	case RTPTransceiverDirectionSendonly:
-		s, err = pc.api.NewRTPSender(track, pc.securityTransport, pc.irisClient)
+		s, err = pc.api.NewRTPSender(track, pc.securityTransport)
 	default:
 		err = errPeerConnAddTransceiverFromTrackSupport
 	}

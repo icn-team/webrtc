@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"bitbucket-eng-gpk1.cisco.com/bitbucket/scm/icn/iris/goiris/pkg/iris"
 	"github.com/icn-team/srtp/v2"
 	"github.com/icn-team/webrtc/v3/internal/mux"
 	"github.com/icn-team/webrtc/v3/internal/util"
@@ -40,6 +41,8 @@ type SharedTransport struct {
 
 	api *API
 	log logging.LeveledLogger
+
+	irisTransport iris.IrisClient
 }
 
 type mlsTransportBootstrap struct {
@@ -57,7 +60,7 @@ func (m *mlsTransportBootstrap) ExportKeyingMaterial(label string, context []byt
 	return keyingMaterial, nil
 }
 
-func (api *API) NewSharedTransport(transport *ICETransport) (*SharedTransport, error) {
+func (api *API) NewSharedTransport(transport *ICETransport, irisClient iris.IrisClient) (*SharedTransport, error) {
 	t := &SharedTransport{
 		iceTransport:          transport,
 		api:                   api,
@@ -65,6 +68,7 @@ func (api *API) NewSharedTransport(transport *ICETransport) (*SharedTransport, e
 		srtpProtectionProfile: srtp.ProtectionProfileAes128CmHmacSha1_80,
 		srtpReady:             make(chan struct{}),
 		log:                   api.settingEngine.LoggerFactory.NewLogger("mlstransport"),
+		irisTransport:         irisClient,
 	}
 
 	return t, nil
@@ -232,6 +236,13 @@ func (t *SharedTransport) startSRTP() error {
 	t.srtpSession.Store(srtpSession)
 	t.srtcpSession.Store(srtcpSession)
 	close(t.srtpReady)
+
+	t.irisClient().SetCallback(iris.NewGoCallback(
+		receiveAudio(t),
+		receiveVideo(t),
+		receiveRTCP(t),
+	))
+
 	return nil
 }
 
@@ -386,4 +397,8 @@ func (t *SharedTransport) updateSessions() error {
 	}
 
 	return nil
+}
+
+func (t *SharedTransport) irisClient() iris.IrisClient {
+	return t.irisTransport
 }
