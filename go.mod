@@ -3,6 +3,7 @@ module github.com/icn-team/webrtc/v3
 go 1.19
 
 require (
+	bitbucket-eng-gpk1.cisco.com/bitbucket/scm/icn/iris/goiris v1.0.0
 	github.com/icn-team/srtp/v2 v2.0.11-0.20230209122411-e1126ce156a7
 	github.com/pion/datachannel v1.5.5
 	github.com/pion/dtls/v2 v2.1.5

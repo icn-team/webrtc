@@ -76,6 +76,15 @@ type SettingEngine struct {
 	disableMediaEngineCopy                    bool
 	srtpProtectionProfiles                    []dtls.SRTPProtectionProfile
 	receiveMTU                                uint
+
+	// IRIS
+	iris struct {
+		enabled    bool
+		serverIP   string
+		serverPort uint16
+		callID     uint32
+		clientID   uint32
+	}
 }
 
 // getReceiveMTU returns the configured MTU. If SettingEngine's MTU is configured to 0 it returns the default
@@ -348,4 +357,13 @@ func (e *SettingEngine) SetDTLSRetransmissionInterval(interval time.Duration) {
 // Leave this 0 for the default maxReceiveBufferSize.
 func (e *SettingEngine) SetSCTPMaxReceiveBufferSize(maxReceiveBufferSize uint32) {
 	e.sctp.maxReceiveBufferSize = maxReceiveBufferSize
+}
+
+// SetIRIS sets the IRIS client parameters.
+func (e *SettingEngine) SetIRIS(enable bool, serverIP string, serverPort uint16, callID, clientID uint32) {
+	e.iris.enabled = enable
+	e.iris.serverIP = serverIP
+	e.iris.serverPort = serverPort
+	e.iris.callID = callID
+	e.iris.clientID = clientID
 }

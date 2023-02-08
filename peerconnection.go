@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"bitbucket-eng-gpk1.cisco.com/bitbucket/scm/icn/iris/goiris/pkg/iris"
 	"github.com/icn-team/srtp/v2"
 	"github.com/icn-team/webrtc/v3/internal/util"
 	"github.com/icn-team/webrtc/v3/pkg/rtcerr"
@@ -85,6 +86,8 @@ type PeerConnection struct {
 
 	interceptorRTCPWriter         interceptor.RTCPWriter
 	interceptorRTCPWriterInsecure interceptor.RTCPWriter
+
+	irisClient iris.IrisClient
 }
 
 // NewPeerConnection creates a PeerConnection with the default codecs and
@@ -153,6 +156,16 @@ func (api *API) NewPeerConnection(configuration Configuration) (*PeerConnection,
 		pc.api.mediaEngine = api.mediaEngine
 	} else {
 		pc.api.mediaEngine = api.mediaEngine.copy()
+	}
+
+	if api.settingEngine.iris.enabled {
+		pc.irisClient = iris.NewIrisClient()
+		pc.irisClient.SetCallState(
+			uint(api.settingEngine.iris.callID),
+			uint(api.settingEngine.iris.clientID),
+			api.settingEngine.iris.serverIP,
+			uint(api.settingEngine.iris.serverPort),
+		)
 	}
 
 	if err = pc.initConfiguration(configuration); err != nil {
@@ -1797,7 +1810,7 @@ func (pc *PeerConnection) AddTrack(track TrackLocal) (*RTPSender, error) {
 		// that's worked for all browsers.
 		if !t.stopped && t.kind == track.Kind() && t.Sender() == nil &&
 			!(currentDirection == RTPTransceiverDirectionSendrecv || currentDirection == RTPTransceiverDirectionSendonly) {
-			sender, err := pc.api.NewRTPSender(track, pc.securityTransport)
+			sender, err := pc.api.NewRTPSender(track, pc.securityTransport, pc.irisClient)
 			if err == nil {
 				err = t.SetSender(sender, track)
 				if err != nil {
@@ -1858,9 +1871,9 @@ func (pc *PeerConnection) newTransceiverFromTrack(direction RTPTransceiverDirect
 		if err != nil {
 			return
 		}
-		s, err = pc.api.NewRTPSender(track, pc.securityTransport)
+		s, err = pc.api.NewRTPSender(track, pc.securityTransport, pc.irisClient)
 	case RTPTransceiverDirectionSendonly:
-		s, err = pc.api.NewRTPSender(track, pc.securityTransport)
+		s, err = pc.api.NewRTPSender(track, pc.securityTransport, pc.irisClient)
 	default:
 		err = errPeerConnAddTransceiverFromTrackSupport
 	}

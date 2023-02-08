@@ -116,6 +116,10 @@ func (s *srtpWriterFuture) SetReadDeadline(t time.Time) error {
 }
 
 func (s *srtpWriterFuture) WriteRTP(header *rtp.Header, payload []byte) (int, error) {
+	if s.rtpSender.api.settingEngine.iris.enabled {
+		return s.writeIRISRTP(header, payload)
+	}
+
 	if value, ok := s.rtpWriteStream.Load().(*srtp.WriteStreamSRTP); ok {
 		return value.WriteRTP(header, payload)
 	}
@@ -128,6 +132,10 @@ func (s *srtpWriterFuture) WriteRTP(header *rtp.Header, payload []byte) (int, er
 }
 
 func (s *srtpWriterFuture) WriteInsecureRTP(header *rtp.Header, payload []byte) (int, error) {
+	if s.rtpSender.api.settingEngine.iris.enabled {
+		return s.writeInsecureIRISRTP(header, payload)
+	}
+
 	if value, ok := s.rtpWriteStream.Load().(*srtp.WriteStreamSRTP); ok {
 		return value.WriteInsecureRTP(header, payload)
 	}
@@ -140,6 +148,10 @@ func (s *srtpWriterFuture) WriteInsecureRTP(header *rtp.Header, payload []byte) 
 }
 
 func (s *srtpWriterFuture) Write(b []byte) (int, error) {
+	if s.rtpSender.api.settingEngine.iris.enabled {
+		return s.writeIRIS(b)
+	}
+
 	if value, ok := s.rtpWriteStream.Load().(*srtp.WriteStreamSRTP); ok {
 		return value.Write(b)
 	}
@@ -152,6 +164,10 @@ func (s *srtpWriterFuture) Write(b []byte) (int, error) {
 }
 
 func (s *srtpWriterFuture) WriteInsecure(b []byte) (int, error) {
+	if s.rtpSender.api.settingEngine.iris.enabled {
+		return s.writeInsecureIRIS(b)
+	}
+
 	if value, ok := s.rtpWriteStream.Load().(*srtp.WriteStreamSRTP); ok {
 		return value.WriteInsecure(b)
 	}
@@ -161,4 +177,62 @@ func (s *srtpWriterFuture) WriteInsecure(b []byte) (int, error) {
 	}
 
 	return s.WriteInsecure(b)
+}
+
+func (s *srtpWriterFuture) writeIRISRTP(header *rtp.Header, payload []byte) (int, error) {
+	if value, ok := s.rtpWriteStream.Load().(*srtp.WriteStreamSRTP); ok {
+		encrypted, err := value.EncryptRTP(header, payload)
+		if err != nil {
+			return 0, err
+		}
+
+		return s.sendIRIS(encrypted)
+	}
+
+	if err := s.init(true); err != nil || s.rtpWriteStream.Load() == nil {
+		return 0, err
+	}
+
+	return s.writeIRISRTP(header, payload)
+
+}
+
+func (s *srtpWriterFuture) writeInsecureIRISRTP(header *rtp.Header, payload []byte) (int, error) {
+	headerRaw, err := header.Marshal()
+	if err != nil {
+		return 0, err
+	}
+
+	return s.sendIRIS(append(headerRaw, payload...))
+}
+
+func (s *srtpWriterFuture) writeIRIS(b []byte) (int, error) {
+	if value, ok := s.rtpWriteStream.Load().(*srtp.WriteStreamSRTP); ok {
+		encrypted, err := value.Encrypt(b)
+		if err != nil {
+			return 0, err
+		}
+
+		return s.sendIRIS(encrypted)
+	}
+
+	if err := s.init(true); err != nil || s.rtpWriteStream.Load() == nil {
+		return 0, err
+	}
+
+	return s.writeIRIS(b)
+}
+
+func (s *srtpWriterFuture) writeInsecureIRIS(b []byte) (int, error) {
+	return s.sendIRIS(b)
+}
+
+func (s *srtpWriterFuture) sendIRIS(b []byte) (int, error) {
+	switch s.rtpSender.kind {
+	case RTPCodecTypeAudio:
+		s.rtpSender.irisClient.ProduceAudioRtp(string(b), uint(len(b)))
+	case RTPCodecTypeVideo:
+		s.rtpSender.irisClient.ProduceVideoRtp(string(b), uint(len(b)))
+	}
+	return len(b), nil
 }

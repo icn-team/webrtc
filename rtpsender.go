@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"bitbucket-eng-gpk1.cisco.com/bitbucket/scm/icn/iris/goiris/pkg/iris"
 	"github.com/icn-team/webrtc/v3/internal/util"
 	"github.com/pion/interceptor"
 	"github.com/pion/randutil"
@@ -52,10 +53,12 @@ type RTPSender struct {
 
 	mu                     sync.RWMutex
 	sendCalled, stopCalled chan struct{}
+
+	irisClient iris.IrisClient
 }
 
 // NewRTPSender constructs a new RTPSender
-func (api *API) NewRTPSender(track TrackLocal, transport SecurityTransport) (*RTPSender, error) {
+func (api *API) NewRTPSender(track TrackLocal, transport SecurityTransport, irisClient iris.IrisClient) (*RTPSender, error) {
 	if track == nil {
 		return nil, errRTPSenderTrackNil
 	} else if transport == nil {
@@ -74,6 +77,7 @@ func (api *API) NewRTPSender(track TrackLocal, transport SecurityTransport) (*RT
 		stopCalled: make(chan struct{}),
 		id:         id,
 		kind:       track.Kind(),
+		irisClient: irisClient,
 	}
 
 	r.addEncoding(track)
