@@ -129,6 +129,30 @@ func (t *SharedTransport) WriteRTCP(pkts []rtcp.Packet) (int, error) {
 	return 0, nil
 }
 
+func (t *SharedTransport) WriteIRISRTCP(pkts []rtcp.Packet, kind RTPCodecType) (int, error) {
+	raw, err := rtcp.Marshal(pkts)
+	if err != nil {
+		return 0, err
+	}
+
+	srtcpSession, err := t.getSRTCPSession()
+	if err != nil {
+		return 0, err
+	}
+
+	writeStream, err := srtcpSession.OpenWriteStream()
+	if err != nil {
+		return 0, fmt.Errorf("%w: %v", errPeerConnWriteRTCPOpenWriteStream, err)
+	}
+
+	encrypted, err := writeStream.Encrypt(raw)
+	if err != nil {
+		return 0, err
+	}
+
+	return t.sendIRISRTCP(encrypted, kind)
+}
+
 // WriteInsecureRTCP sends a user provided RTCP packet to the connected peer
 // without encryption. If no peer is connected the packet is discarded.
 func (t *SharedTransport) WriteInsecureRTCP(pkts []rtcp.Packet) (int, error) {
@@ -151,6 +175,25 @@ func (t *SharedTransport) WriteInsecureRTCP(pkts []rtcp.Packet) (int, error) {
 		return n, err
 	}
 	return 0, nil
+}
+
+func (t *SharedTransport) WriteInsecureIRISRTCP(pkts []rtcp.Packet, kind RTPCodecType) (int, error) {
+	raw, err := rtcp.Marshal(pkts)
+	if err != nil {
+		return 0, err
+	}
+
+	return t.sendIRISRTCP(raw, kind)
+}
+
+func (t *SharedTransport) sendIRISRTCP(b []byte, kind RTPCodecType) (int, error) {
+	switch kind {
+	case RTPCodecTypeAudio:
+		t.irisClient().ProduceAudioRtcp(string(b), uint(len(b)))
+	case RTPCodecTypeVideo:
+		t.irisClient().ProduceVideoRtcp(string(b), uint(len(b)))
+	}
+	return len(b), nil
 }
 
 // GetLocalParameters returns the Shared parameters of the local SharedTransport upon construction.
@@ -237,11 +280,14 @@ func (t *SharedTransport) startSRTP() error {
 	t.srtcpSession.Store(srtcpSession)
 	close(t.srtpReady)
 
-	t.irisClient().SetCallback(iris.NewGoCallback(
-		receiveAudio(t),
-		receiveVideo(t),
-		receiveRTCP(t),
-	))
+	if t.api.settingEngine.iris.enabled {
+		t.irisClient().SetCallback(iris.NewGoCallback(
+			receiveAudio(t),
+			receiveVideo(t),
+			receiveRTCP(t),
+		))
+		t.log.Info("IRIS callbacks set")
+	}
 
 	return nil
 }

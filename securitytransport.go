@@ -19,7 +19,9 @@ type SecurityTransport interface {
 	OnStateChange(f func(SecurityTransportState))
 	State() SecurityTransportState
 	WriteRTCP(pkts []rtcp.Packet) (int, error)
+	WriteIRISRTCP(pkts []rtcp.Packet, kind RTPCodecType) (int, error)
 	WriteInsecureRTCP(pkts []rtcp.Packet) (int, error)
+	WriteInsecureIRISRTCP(pkts []rtcp.Packet, kind RTPCodecType) (int, error)
 	GetLocalParameters() (SecurityParameters, error)
 	GetRemoteCertificate() []byte
 	getSRTPSession() (*srtp.SessionSRTP, error)
